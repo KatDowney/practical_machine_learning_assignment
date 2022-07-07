@@ -1,0 +1,190 @@
+---
+title: "Pratical Machine Learning - Week 4 Assignment"
+author: "Kat Downey"
+output:
+ html_document:
+    number_sections: false
+    fig_caption: true
+    toc: false
+    theme: cosmo
+    highlight: tango
+---
+
+**Project**
+
+*Background*
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+*Data* 
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+*What you should submit*
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+
+Loading data and libraries and set seed to randomise the numbers.
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE, fig.width = 10)
+
+install.packages("lattice", repos = "http://cran.us.r-project.org")
+library(lattice)
+install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+library(ggplot2)
+install.packages("kernlab", repos = "http://cran.us.r-project.org")
+library(kernlab)
+install.packages("rattle", repos = "http://cran.us.r-project.org")
+library(rattle)
+install.packages("corrplot", repos = "http://cran.us.r-project.org")
+library(corrplot)
+install.packages("caret", repos = "http://cran.us.r-project.org")
+library(caret)
+            
+
+
+set.seed(1234)
+
+traincsv <- read.csv('pml-training.csv')
+testcsv <- read.csv('pml-testing.csv')
+
+```
+
+```{r train}
+
+dim(traincsv)
+```
+
+```{r test}
+
+dim(testcsv)
+```
+160 variables and 19622 observations in the training set and 20 observations in the test set.
+
+**Cleaning the Data**
+First I want to remove every varaible that has N/A so i've removed NAs off any column past column 9 and removed columns 1-7 as unnecessary to keep
+
+```{r NAs}
+
+traincsv <- traincsv[, colMeans(is.na(traincsv))< .9]
+traincsv <- traincsv[,-c(1:7)]
+
+dim(traincsv)
+
+```
+**Near Zero**
+Next I'd like to remove the near zero variables as unnecessary.
+```{r zero}
+
+nvz <- nearZeroVar(traincsv)
+traincsv <- traincsv[,-nvz]
+dim(traincsv)
+
+```
+**Create Validation dataset from Training Set**
+```{r validation}
+inTrain <- createDataPartition(y=traincsv$classe, p=0.7, list=F)
+train <- traincsv[inTrain,]
+validation <- traincsv[-inTrain,]
+
+```
+
+
+**3 fold cross validation control**
+```{r cross_valid}
+control <- trainControl(method = "cv", number = 3, verboseIter = F)
+
+
+```
+
+**Create Models- Decision Tree**
+First I will make a Decision Tree Model
+```{r model_decision}
+
+mod_decision_tree <- train(classe ~., data = train, method="rpart", trControl = control, tuneLength =5)
+
+fancyRpartPlot(mod_decision_tree$finalModel)
+
+```
+**Prediction Decision Tree**
+Prediction with the Decision Tree
+```{r decision_tree_prediction}
+predict_decision_tree <- predict(mod_decision_tree, validation)
+cmtrees <- confusionMatrix(predict_decision_tree, factor(validation$classe))
+cmtrees
+```
+**Create Models - Random Forest**
+
+```{r random_forest}
+mod_random_forest <- train(classe~., data = train, method = "rf", trControl = control, tuneLength=5)
+
+predict_random_forest <- predict(mod_random_forest, validation)
+cmrf <- confusionMatrix(predict_random_forest, factor(validation$classe))
+
+cmrf
+
+```
+
+
+**Create Models - GBM**
+```{r gbm}
+
+mod_gbm <- train(classe~., data=train, method="gbm", trControl = control, tuneLength=5, verbose = F)
+
+predict_gbm <- predict(mod_gbm, validation)
+cmgbm <- confusionMatrix(predict_gbm, factor(validation$classe))
+cmgbm
+
+```
+
+**Accuracy and out of Sample errors**
+The best model is the Random Forest model with a 0.9965 accuracy and 0.005 out of sample error rate. This is the best model to use on the test set.
+
+```{r accuracy}
+
+model <- c('Decision Tree', 'Random Forest', 'GBM')
+accuracy <- c('0.5383', '0.9963 ', '0.9907')
+out_of_sample_error <- c('0.462', '0.004', '0.009')
+
+df <- data.frame(model, accuracy, out_of_sample_error)
+df
+```
+**Predicting on our Test Set**
+
+```{r predict_test}
+
+pred_test <- predict(mod_random_forest, testcsv)
+
+print(pred_test)
+
+```
+
+
+**Summary**
+	• After cleaning training dataset I decided to split the training dataset into testing and training areas and validation datasets.
+
+	• I then took this data and used trainControl to create a 3 fold cross validation. trainControl is a function that can be used to specify resampling 
+	
+	• Next I wanted to make a few different machine learning algorithms to check which would be the most accurate one to take forward, I always used the classe variable as the outcome and the other variables as predictors.
+	
+	• First up was a Decision Tree model which had an accuracy of 0.538 so not the best.
+	
+	• Next was a random forest which had a much higher accuracy of 0.9963.
+	
+	• Testing one final model I took a look at gradient boosted model which gave me an accuracy of 0.9907.
+	
+	• Random Forests and GBM felt like the most accurate models and also their P values were very low (compared to decision tree which was a much higher)
+	
+	• I ran the accuracy and out of sample errors and determined that Random Forests was the best model to use.
+	
+I then used this model to predict on my test set.
+
+
+
